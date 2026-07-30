@@ -15,6 +15,7 @@ const busSchema = new mongoose.Schema(
     driver: { type: String, required: true },
     vehicleNo: { type: String, required: true },
     capacity: { type: String, default: '45% Full' },
+    crowdLevel: { type: String, default: 'Medium' },
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
     realAddress: { type: String, default: 'Patia to Pitapalli Highway, Bhubaneswar' }

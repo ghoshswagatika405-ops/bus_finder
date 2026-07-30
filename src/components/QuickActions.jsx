@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bus, MapPin, Network, Calendar } from 'lucide-react';
+import { Bus, MapPin, Network, Calendar, Package } from 'lucide-react';
 
 export default function QuickActions({ activeTab, setActiveTab }) {
   const actions = [
@@ -7,6 +7,7 @@ export default function QuickActions({ activeTab, setActiveTab }) {
     { id: 'live_tracking', label: 'Live Tracking', icon: MapPin, tab: 'map' },
     { id: 'routes', label: 'Routes', icon: Network, tab: 'routes' },
     { id: 'schedules', label: 'Schedules', icon: Calendar, tab: 'schedule' },
+    { id: 'lost_found', label: 'Lost & Found', icon: Package, tab: 'lost_found' }
   ];
 
   return (

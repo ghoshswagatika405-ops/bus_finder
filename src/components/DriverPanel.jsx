@@ -41,7 +41,7 @@ function getNearestStop(lat, lng, stopsList) {
   return { stop: stopsList[closestIndex], index: closestIndex };
 }
 
-export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBusDetails }) {
+export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBusDetails, onShareBus }) {
   // Driver Authentication States
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('bec_driver_authenticated') === 'true';
@@ -58,8 +58,40 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [speed, setSpeed] = useState(45);
   const [capacity, setCapacity] = useState('58% Full');
+  const [crowdLevel, setCrowdLevel] = useState('Medium');
   const [status, setStatus] = useState('Location OFF');
   const [currentStopIndex, setCurrentStopIndex] = useState(0);
+
+  // SOS Emergency Control States
+  const [isSosModalOpen, setIsSosModalOpen] = useState(false);
+  const [sosBroadcastActive, setSosBroadcastActive] = useState(false);
+
+  const handleCrowdLevelChange = (level) => {
+    setCrowdLevel(level);
+    let capStr = capacity;
+    if (level === 'Low') capStr = '30% Full';
+    else if (level === 'Medium') capStr = '58% Full';
+    else if (level === 'Full') capStr = '88% Full';
+    setCapacity(capStr);
+
+    if (onUpdateBusDetails) {
+      onUpdateBusDetails(selectedBusId, { crowdLevel: level, capacity: capStr });
+    }
+  };
+
+  const handleCapacitySelect = (val) => {
+    setCapacity(val);
+    const capNum = parseInt(val, 10);
+    let level = 'Medium';
+    if (capNum < 45) level = 'Low';
+    else if (capNum <= 70) level = 'Medium';
+    else level = 'Full';
+    setCrowdLevel(level);
+
+    if (onUpdateBusDetails) {
+      onUpdateBusDetails(selectedBusId, { capacity: val, crowdLevel: level });
+    }
+  };
 
   // Real GPS Phone Location States
   const [realCoords, setRealCoords] = useState(null); // { lat, lng }
@@ -503,25 +535,73 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
           </div>
         </div>
 
-        <button
-          onClick={handleLogout}
-          title="Logout Driver Session"
-          style={{
-            background: '#F1F5F9',
-            border: '1px solid #CBD5E1',
-            color: '#64748B',
-            padding: '6px 10px',
-            borderRadius: 12,
-            fontSize: '0.75rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4
-          }}
-        >
-          <LogOut size={14} /> Exit
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* SOS EMERGENCY PANIC BUTTON */}
+          <button
+            onClick={() => setIsSosModalOpen(true)}
+            title="Emergency SOS Panic Alert & Hotlines"
+            style={{
+              background: '#DC2626',
+              color: '#FFFFFF',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: 12,
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              boxShadow: '0 4px 14px rgba(220, 38, 38, 0.45)',
+              animation: 'pulse-ring 1.8s infinite'
+            }}
+          >
+            🚨 SOS EMERGENCY
+          </button>
+
+          <button
+            onClick={() => {
+              const bus = BUSES_LIST.find((b) => (b.id === selectedBusId || b.busId === selectedBusId)) || activeBus || BUSES_LIST[0];
+              if (onShareBus) onShareBus(bus);
+            }}
+            title="Share Live Location with Parents"
+            style={{
+              background: '#ECFDF5',
+              border: '1.5px solid #A7F3D0',
+              color: '#047857',
+              padding: '6px 12px',
+              borderRadius: 12,
+              fontSize: '0.76rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5
+            }}
+          >
+            <ShieldCheck size={16} color="#047857" /> 🛡️ Parents
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title="Logout Driver Session"
+            style={{
+              background: '#F1F5F9',
+              border: '1px solid #CBD5E1',
+              color: '#64748B',
+              padding: '6px 10px',
+              borderRadius: 12,
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4
+            }}
+          >
+            <LogOut size={14} /> Exit
+          </button>
+        </div>
       </div>
 
       {/* GPS TRACKING SOURCE SELECTOR (REAL PHONE GPS vs SIMULATION DEMO) */}
@@ -745,6 +825,40 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
         </div>
       </div>
 
+      {/* DRIVER LOCATION MOVEMENT SWITCH BANNER */}
+      <div
+        style={{
+          background: isTransmitting ? '#DCFCE7' : '#FEF2F2',
+          border: `1.5px solid ${isTransmitting ? '#86EFAC' : '#FCA5A5'}`,
+          padding: '12px 16px',
+          borderRadius: '16px',
+          marginBottom: 14,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
+          zIndex: 1
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Radio size={20} color={isTransmitting ? '#15803D' : '#DC2626'} className={isTransmitting ? 'pulse-icon' : ''} />
+          <div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: isTransmitting ? '#166534' : '#991B1B' }}>
+              {isTransmitting ? '🟢 DRIVER LOCATION ON (Bus Movement Active)' : '🔴 DRIVER LOCATION OFF (Bus Stationary 0 km/h)'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: isTransmitting ? '#15803D' : '#B91C1C', fontWeight: 600, marginTop: 2 }}>
+              {isTransmitting
+                ? 'Live location broadcasting to Passenger Map. Bus is moving.'
+                : 'Bus will NOT move on map until driver turns location ON below.'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: isTransmitting ? '#15803D' : '#DC2626', color: '#FFFFFF', fontSize: '0.7rem', fontWeight: 800, padding: '4px 10px', borderRadius: 10, whiteSpace: 'nowrap' }}>
+          {isTransmitting ? 'MOVING' : 'STOPPED'}
+        </div>
+      </div>
+
       {/* START BUS RIDE & GPS TRANSMISSION TOGGLE BUTTON */}
       <button
         onClick={toggleLocationBroadcast}
@@ -763,7 +877,7 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
           justifyContent: 'center',
           gap: 10,
           boxShadow: isTransmitting ? '0 4px 14px rgba(239, 68, 68, 0.3)' : '0 4px 14px rgba(2, 132, 199, 0.3)',
-          marginBottom: 24,
+          marginBottom: 16,
           transition: 'all 0.2s ease',
           position: 'relative',
           zIndex: 1
@@ -771,11 +885,61 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
       >
         {isTransmitting ? <Pause size={20} /> : <Play size={20} />}
         {isTransmitting
-          ? 'END RIDE & PAUSE BROADCAST'
+          ? '⏹️ TURN LOCATION OFF & PAUSE BUS MOVEMENT'
           : trackingMode === 'REAL_GPS'
-            ? '📱 START REAL BUS PHONE GPS TRACKING'
-            : '🚀 START SIMULATED ROUTE DEMO'}
+            ? '📱 TURN LOCATION ON (START BUS MOVEMENT)'
+            : '🚀 TURN LOCATION ON (START SIMULATED RIDE)'}
       </button>
+
+      {/* PARENTS LIVE LOCATION SHARE DISPATCH BOX */}
+      <div
+        style={{
+          background: '#F0FDF4',
+          border: '1.5px solid #86EFAC',
+          padding: '14px 16px',
+          borderRadius: '16px',
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'relative',
+          zIndex: 1
+        }}
+      >
+        <div>
+          <span style={{ fontSize: '0.74rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={16} color="#166534" /> 🛡️ Parent Live Safety Tracking
+          </span>
+          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#14532D', marginTop: 2 }}>
+            Share live bus location & ETA with student parents
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const bus = BUSES_LIST.find((b) => (b.id === selectedBusId || b.busId === selectedBusId)) || activeBus || BUSES_LIST[0];
+            if (onShareBus) onShareBus(bus);
+          }}
+          style={{
+            background: '#166534',
+            color: '#FFFFFF',
+            border: 'none',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            fontWeight: 800,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            boxShadow: '0 4px 12px rgba(22, 101, 52, 0.3)',
+            flexShrink: 0
+          }}
+        >
+          <ShieldCheck size={16} /> Share with Parents 🛡️
+        </button>
+      </div>
 
       {/* Speed & Seats Controls */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 20, position: 'relative', zIndex: 1 }}>
@@ -803,25 +967,330 @@ export default function DriverPanel({ activeBus, onUpdateBusLocation, onUpdateBu
           )}
         </div>
 
-        {/* Occupancy Selector */}
+        {/* Smart Crowd Indicator & Occupancy Selector */}
         <div style={{ background: '#F8FAFC', padding: 14, borderRadius: 16, border: '1px solid #E2E8F0' }}>
           <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Users size={16} color="#10B981" /> Seats Occupancy
+            <Users size={16} color="#10B981" /> Smart Crowd Indicator
           </span>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
+            <button
+              type="button"
+              onClick={() => handleCrowdLevelChange('Low')}
+              style={{
+                padding: '6px 4px',
+                borderRadius: 8,
+                border: `1.5px solid ${crowdLevel === 'Low' ? '#10B981' : '#CBD5E1'}`,
+                background: crowdLevel === 'Low' ? '#DCFCE7' : '#FFFFFF',
+                color: crowdLevel === 'Low' ? '#15803D' : '#64748B',
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                cursor: 'pointer'
+              }}
+            >
+              🟢 Low
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCrowdLevelChange('Medium')}
+              style={{
+                padding: '6px 4px',
+                borderRadius: 8,
+                border: `1.5px solid ${crowdLevel === 'Medium' ? '#F59E0B' : '#CBD5E1'}`,
+                background: crowdLevel === 'Medium' ? '#FEF3C7' : '#FFFFFF',
+                color: crowdLevel === 'Medium' ? '#B45309' : '#64748B',
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                cursor: 'pointer'
+              }}
+            >
+              🟡 Medium
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCrowdLevelChange('Full')}
+              style={{
+                padding: '6px 4px',
+                borderRadius: 8,
+                border: `1.5px solid ${crowdLevel === 'Full' ? '#EF4444' : '#CBD5E1'}`,
+                background: crowdLevel === 'Full' ? '#FEE2E2' : '#FFFFFF',
+                color: crowdLevel === 'Full' ? '#B91C1C' : '#64748B',
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                cursor: 'pointer'
+              }}
+            >
+              🔴 Full
+            </button>
+          </div>
+
           <select
             value={capacity}
-            disabled={!isTransmitting}
-            onChange={(e) => setCapacity(e.target.value)}
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1', fontWeight: 700, fontSize: '0.8rem' }}
+            onChange={(e) => handleCapacitySelect(e.target.value)}
+            style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid #CBD5E1', fontWeight: 700, fontSize: '0.75rem' }}
           >
-            <option value="25% Full">25% Seats Filled</option>
-            <option value="45% Full">45% Seats Filled</option>
-            <option value="58% Full">58% Seats Filled</option>
-            <option value="75% Full">75% Seats Filled</option>
-            <option value="90% Full (Crowded)">90% Seats Filled</option>
+            <option value="25% Full">25% Seats (Low Crowd 🟢)</option>
+            <option value="45% Full">45% Seats (Low Crowd 🟢)</option>
+            <option value="58% Full">58% Seats (Medium 🟡)</option>
+            <option value="75% Full">75% Seats (Full 🔴)</option>
+            <option value="90% Full (Crowded)">90% Seats (Full 🔴)</option>
           </select>
         </div>
       </div>
+
+      {/* SOS EMERGENCY PANIC MODAL DIALOG */}
+      {isSosModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '16px'
+          }}
+          onClick={() => setIsSosModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '24px',
+              maxWidth: '460px',
+              width: '100%',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(220, 38, 38, 0.35)',
+              border: '2px solid #EF4444'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Red Alert Header */}
+            <div style={{ background: '#DC2626', color: '#FFFFFF', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.4rem' }}>🚨</span>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, letterSpacing: 0.3 }}>
+                    EMERGENCY SOS PANIC SYSTEM
+                  </h3>
+                  <div style={{ fontSize: '0.74rem', opacity: 0.9, fontWeight: 700 }}>
+                    Bhubaneswar Engineering College Safety Hotline
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsSosModalOpen(false)}
+                style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: 32, height: 32, fontWeight: 800, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Broadcast Alert Trigger */}
+              <button
+                onClick={() => {
+                  setSosBroadcastActive(true);
+                  if (onUpdateBusLocation) {
+                    onUpdateBusLocation(selectedBusId, {
+                      status: '🚨 EMERGENCY SOS ALERT',
+                      crowdLevel: 'Full'
+                    });
+                  }
+                  alert('🚨 EMERGENCY SOS BROADCAST ACTIVATED! Warning notice displayed on Passenger Map.');
+                }}
+                style={{
+                  background: sosBroadcastActive ? '#991B1B' : '#EF4444',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '12px',
+                  borderRadius: '16px',
+                  fontWeight: 800,
+                  fontSize: '0.92rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                }}
+              >
+                {sosBroadcastActive ? '✅ SOS BROADCAST LIVE ON PASSENGER APP' : '🚨 BROADCAST EMERGENCY TO PASSENGERS'}
+              </button>
+
+              {/* Emergency Info Packet Snapshot */}
+              <div style={{ background: '#FEF2F2', border: '1.5px solid #FCA5A5', borderRadius: '16px', padding: '14px' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#991B1B', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>📍 EMERGENCY INFORMATION PACKET</span>
+                  <span>{new Date().toLocaleTimeString()}</span>
+                </div>
+
+                <div style={{ fontSize: '0.82rem', color: '#1E293B', fontWeight: 700, lineHeight: 1.5 }}>
+                  <div>🚌 <strong>Bus:</strong> Bus 108 - BEC Rider (OD-02-BEC-1080)</div>
+                  <div>👤 <strong>Driver:</strong> {driverTitle}</div>
+                  <div>📍 <strong>Location:</strong> Baramunda BSABT ➔ BEC Corridor</div>
+                  <div>⚡ <strong>Speed:</strong> {speed} km/h</div>
+                </div>
+              </div>
+
+              {/* Share Emergency Packet Actions */}
+              <div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: 8 }}>
+                  Share Live Location & Bus Info:
+                </span>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `🚨 EMERGENCY SOS ALERT! 🚨\nBus: Bus 108 (BEC Rider)\nDriver: ${driverTitle}\nLocation: Baramunda BSABT ➔ BEC\nSpeed: ${speed} km/h\nTime: ${new Date().toLocaleTimeString()}\nPLEASE SEND HELP IMMEDIATELY!`
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      background: '#25D366',
+                      color: '#FFFFFF',
+                      padding: '10px',
+                      borderRadius: '12px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      textAlign: 'center',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    📱 WhatsApp
+                  </a>
+
+                  <a
+                    href={`sms:?body=${encodeURIComponent(
+                      `🚨 SOS EMERGENCY ALERT! Bus 108 BEC Rider needs assistance. Speed: ${speed}km/h. Time: ${new Date().toLocaleTimeString()}`
+                    )}`}
+                    style={{
+                      background: '#2563EB',
+                      color: '#FFFFFF',
+                      padding: '10px',
+                      borderRadius: '12px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      textAlign: 'center',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    💬 SMS Text
+                  </a>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `🚨 EMERGENCY SOS ALERT!\nBus: Bus 108 (BEC Rider)\nDriver: ${driverTitle}\nSpeed: ${speed} km/h\nTime: ${new Date().toLocaleTimeString()}`
+                      );
+                      alert('Copied SOS info packet to clipboard!');
+                    }}
+                    style={{
+                      background: '#475569',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '10px',
+                      borderRadius: '12px',
+                      fontSize: '0.76rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📋 Copy Text
+                  </button>
+                </div>
+              </div>
+
+              {/* Direct Emergency Contact Speed Dialers */}
+              <div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: 8 }}>
+                  Direct Emergency Hotlines (Click to Call):
+                </span>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <a
+                    href="tel:+919437012345"
+                    style={{
+                      background: '#FEF3C7',
+                      border: '1px solid #FCD34D',
+                      color: '#92400E',
+                      padding: '10px 12px',
+                      borderRadius: '14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    📞 <span>BEC Security<br /><small>+91 94370 12345</small></span>
+                  </a>
+
+                  <a
+                    href="tel:112"
+                    style={{
+                      background: '#FEE2E2',
+                      border: '1px solid #FCA5A5',
+                      color: '#991B1B',
+                      padding: '10px 12px',
+                      borderRadius: '14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    🚓 <span>Police Control<br /><small>Dial 112</small></span>
+                  </a>
+
+                  <a
+                    href="tel:108"
+                    style={{
+                      background: '#DCFCE7',
+                      border: '1px solid #86EFAC',
+                      color: '#166534',
+                      padding: '10px 12px',
+                      borderRadius: '14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    🚑 <span>Ambulance<br /><small>Dial 108</small></span>
+                  </a>
+
+                  <a
+                    href="tel:101"
+                    style={{
+                      background: '#DBEAFE',
+                      border: '1px solid #93C5FD',
+                      color: '#1E40AF',
+                      padding: '10px 12px',
+                      borderRadius: '14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
+                    🚒 <span>Fire Service<br /><small>Dial 101</small></span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

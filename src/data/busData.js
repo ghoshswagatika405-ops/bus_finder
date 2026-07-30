@@ -70,6 +70,7 @@ export const BUSES_LIST = [
     driver: 'Manoj Das',
     vehicleNo: 'OD-02-BEC-1080',
     capacity: '58% Full',
+    crowdLevel: 'Medium',
     lat: 20.2785,
     lng: 85.7892,
     isLocationActive: false
@@ -89,6 +90,7 @@ export const BUSES_LIST = [
     driver: 'Rajesh Kumar',
     vehicleNo: 'OD-02-KST-2070',
     capacity: '42% Full',
+    crowdLevel: 'Low',
     lat: 20.2480,
     lng: 85.7680,
     isLocationActive: false
@@ -108,11 +110,103 @@ export const BUSES_LIST = [
     driver: 'Ramesh Swain',
     vehicleNo: 'OD-02-AMS-3050',
     capacity: '75% Full',
+    crowdLevel: 'Full',
     lat: 20.1750,
     lng: 85.6920,
     isLocationActive: false
   }
 ];
+
+export const RADIUS_OPTIONS = [
+  { id: 'ALL', label: 'All Buses', maxKm: Infinity, meters: 0 },
+  { id: '500m', label: '📍 Within 500m', maxKm: 0.5, meters: 500 },
+  { id: '1km', label: '📍 Within 1km', maxKm: 1.0, meters: 1000 },
+  { id: '2km', label: '📍 Within 2km', maxKm: 2.0, meters: 2000 },
+  { id: '5km', label: '📍 Within 5km', maxKm: 5.0, meters: 5000 }
+];
+
+export function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+export function formatDistanceText(distKm) {
+  if (distKm < 0.05) {
+    return 'At Location';
+  }
+  if (distKm < 1) {
+    const meters = Math.round(distKm * 1000);
+    return `${meters}m away`;
+  }
+  return `${distKm.toFixed(1)} km away`;
+}
+
+export function isWithinRadius(busLat, busLng, userLat, userLng, radiusFilterId) {
+  if (!radiusFilterId || radiusFilterId === 'ALL') return true;
+  const option = RADIUS_OPTIONS.find((r) => r.id === radiusFilterId);
+  if (!option || option.maxKm === Infinity) return true;
+
+  const distKm = calculateDistanceKm(userLat, userLng, busLat, busLng);
+  return distKm <= option.maxKm;
+}
+
+export function getCrowdIndicator(bus) {
+  let level = bus?.crowdLevel;
+  if (!level) {
+    const capNum = parseInt(bus?.capacity || '50', 10);
+    if (capNum < 45) level = 'Low';
+    else if (capNum <= 70) level = 'Medium';
+    else level = 'Full';
+  }
+
+  if (level === 'Low') {
+    return {
+      level: 'Low',
+      emoji: '🟢',
+      badgeText: '🟢 Low',
+      color: '#10B981',
+      bg: '#ECFDF5',
+      border: '#A7F3D0',
+      recommendation: 'Plenty of seats available! Recommended to board.',
+      waitDecision: 'Board Now 🟢',
+      waitAdvice: 'Great time to board this bus'
+    };
+  } else if (level === 'Medium') {
+    return {
+      level: 'Medium',
+      emoji: '🟡',
+      badgeText: '🟡 Medium',
+      color: '#D97706',
+      bg: '#FEF3C7',
+      border: '#FDE68A',
+      recommendation: 'Moderate rush. Limited seating available.',
+      waitDecision: 'Seats Limited 🟡',
+      waitAdvice: 'Fewer seats, standing room available'
+    };
+  } else {
+    return {
+      level: 'Full',
+      emoji: '🔴',
+      badgeText: '🔴 Full',
+      color: '#DC2626',
+      bg: '#FEE2E2',
+      border: '#FCA5A5',
+      recommendation: 'Bus is full to capacity! High congestion.',
+      waitDecision: 'Wait for Next Bus 🔴',
+      waitAdvice: 'High crowd — consider waiting for the next bus'
+    };
+  }
+}
 
 export const BUS_SCHEDULES = [
   {
@@ -132,3 +226,4 @@ export const BUS_SCHEDULES = [
     timings: ['06:30 AM', '07:45 AM', '09:15 AM', '11:30 AM', '01:45 PM', '03:15 PM', '05:30 PM', '07:45 PM', '10:00 PM']
   }
 ];
+

@@ -1,16 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { BUS_STOPS, REVERSE_BUS_STOPS, BUS_ROUTES, BUSES_LIST } from '../data/busData';
-import { Play, Pause, MapPin, Bus, ChevronUp, ChevronDown, Radio, AlertCircle, Clock, Timer } from 'lucide-react';
+import {
+  BUS_STOPS,
+  REVERSE_BUS_STOPS,
+  BUS_ROUTES,
+  BUSES_LIST,
+  getCrowdIndicator,
+  calculateDistanceKm,
+  formatDistanceText,
+  isWithinRadius,
+  RADIUS_OPTIONS
+} from '../data/busData';
+import { Play, Pause, MapPin, Bus, ChevronUp, ChevronDown, Radio, AlertCircle, Clock, Timer, Locate, Navigation } from 'lucide-react';
 
 // Custom Bus Icon Creator (Green Circle with Bus Icon matching photo)
-const createBusMarkerIcon = (busNumber, isSelected) => {
+const createBusMarkerIcon = (busNumber, isSelected, isWithin) => {
   return L.divIcon({
     className: 'custom-bus-marker',
     html: `
       <div style="
-        background-color: ${isSelected ? '#10B981' : '#1A5CE5'};
+        background-color: ${isSelected ? '#10B981' : isWithin === false ? '#94A3B8' : '#1A5CE5'};
         color: white;
         width: 38px;
         height: 38px;
@@ -23,6 +33,7 @@ const createBusMarkerIcon = (busNumber, isSelected) => {
         box-shadow: 0 4px 14px rgba(0,0,0,0.3);
         border: 3px solid white;
         transform: scale(${isSelected ? 1.2 : 1});
+        opacity: ${isWithin === false ? 0.45 : 1};
         transition: transform 0.2s ease;
       ">
         🚌
@@ -30,6 +41,33 @@ const createBusMarkerIcon = (busNumber, isSelected) => {
     `,
     iconSize: [38, 38],
     iconAnchor: [19, 19]
+  });
+};
+
+// Custom User Location Icon Creator
+const createUserMarkerIcon = (isLiveGps) => {
+  return L.divIcon({
+    className: 'custom-user-marker',
+    html: `
+      <div style="
+        background-color: ${isLiveGps ? '#16A34A' : '#2563EB'};
+        color: white;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        font-weight: 800;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 0 6px ${isLiveGps ? 'rgba(22, 163, 74, 0.35)' : 'rgba(37, 99, 235, 0.35)'}, 0 4px 14px rgba(0,0,0,0.3);
+        border: 2.5px solid white;
+      ">
+        📍
+      </div>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17]
   });
 };
 
@@ -62,7 +100,15 @@ function ChangeView({ center }) {
   return null;
 }
 
-export default function MapView({ selectedBus, setSelectedBus }) {
+export default function MapView({
+  selectedBus,
+  setSelectedBus,
+  onShareBus,
+  userLocation = { lat: 20.2785, lng: 85.7892, name: 'Baramunda BSABT', isLiveGps: false },
+  setUserLocation,
+  radiusFilter = 'ALL',
+  setRadiusFilter
+}) {
   const [buses, setBuses] = useState(BUSES_LIST);
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(true);
   const [mapStyle, setMapStyle] = useState('google_roadmap'); // 'google_roadmap', 'google_satellite', 'osm'
@@ -74,10 +120,13 @@ export default function MapView({ selectedBus, setSelectedBus }) {
     ? selectedBus
     : (activeBusesOnMap.length > 0 ? activeBusesOnMap[0] : null);
 
-  const mapCenter = activeBus ? [activeBus.lat, activeBus.lng] : [20.2400, 85.7500];
+  const mapCenter = activeBus ? [activeBus.lat, activeBus.lng] : [userLocation.lat, userLocation.lng];
 
   // Active stops list based on bus journey direction (Forward vs Reverse)
   const activeStops = (activeBus && activeBus.direction === 'REVERSE') ? REVERSE_BUS_STOPS : BUS_STOPS;
+
+  // Selected Radius object info
+  const selectedRadiusObj = RADIUS_OPTIONS.find((r) => r.id === radiusFilter) || RADIUS_OPTIONS[0];
 
   // Find nearest stop index for active bus to position green bus icon on line timeline
   const getNearestStopIndex = () => {
@@ -121,6 +170,7 @@ export default function MapView({ selectedBus, setSelectedBus }) {
   };
 
   const currentTileConfig = getTileLayerConfig();
+  const activeCrowd = activeBus ? getCrowdIndicator(activeBus) : null;
 
   return (
     <div className="map-view-container">
@@ -243,7 +293,61 @@ export default function MapView({ selectedBus, setSelectedBus }) {
         </div>
       )}
 
-      <MapContainer center={mapCenter} zoom={12} scrollWheelZoom={true}>
+      {/* FLOATING GOOGLE MAPS STYLE DISTANCE RADIUS FILTER BAR OVERLAY */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 60,
+          left: 14,
+          right: 14,
+          zIndex: 1000,
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(10px)',
+          borderRadius: '16px',
+          padding: '8px 12px',
+          boxShadow: '0 4px 18px rgba(0,0,0,0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          overflowX: 'auto',
+          border: '1px solid rgba(226, 232, 240, 0.8)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <Navigation size={14} color="#1A5CE5" />
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1E293B' }}>
+            Shows buses within:
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {RADIUS_OPTIONS.map((chip) => {
+            const isActive = radiusFilter === chip.id;
+            return (
+              <button
+                key={chip.id}
+                onClick={() => setRadiusFilter(chip.id)}
+                style={{
+                  background: isActive ? '#1A5CE5' : '#F1F5F9',
+                  color: isActive ? '#FFFFFF' : '#475569',
+                  border: `1px solid ${isActive ? '#1A5CE5' : '#CBD5E1'}`,
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <MapContainer center={mapCenter} zoom={12} scrollWheelZoom={true} zoomControl={false} style={{ width: '100%', height: '100%' }}>
         <ChangeView center={mapCenter} />
         <TileLayer
           key={mapStyle}
@@ -251,6 +355,37 @@ export default function MapView({ selectedBus, setSelectedBus }) {
           url={currentTileConfig.url}
           subdomains={currentTileConfig.subdomains}
         />
+
+        {/* User Location / Selected Stop Marker */}
+        {userLocation && (
+          <Marker position={[userLocation.lat, userLocation.lng]} icon={createUserMarkerIcon(userLocation.isLiveGps)}>
+            <Popup>
+              <div style={{ padding: '4px' }}>
+                <strong style={{ color: '#2563EB', fontSize: '0.9rem' }}>
+                  {userLocation.isLiveGps ? '⚡ Your Live GPS Location' : `📍 ${userLocation.name}`}
+                </strong>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
+                  Distance reference center for 500m, 1km, 2km radius search
+                </p>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Distance Radius Coverage Circle Overlay (500m, 1km, 2km, 5km) */}
+        {radiusFilter !== 'ALL' && selectedRadiusObj?.meters > 0 && userLocation && (
+          <Circle
+            center={[userLocation.lat, userLocation.lng]}
+            radius={selectedRadiusObj.meters}
+            pathOptions={{
+              color: '#1A5CE5',
+              fillColor: '#3B82F6',
+              fillOpacity: 0.14,
+              weight: 2.5,
+              dashArray: '6, 6'
+            }}
+          />
+        )}
 
         {/* Draw Black Thick Route Polyline Path matching photo */}
         {BUS_ROUTES.map((route) => (
@@ -282,23 +417,37 @@ export default function MapView({ selectedBus, setSelectedBus }) {
         {/* Draw ONLY Buses whose Driver Location IS TURNED ON */}
         {activeBusesOnMap.map((bus) => {
           const isSelected = activeBus && (activeBus.id === bus.id || activeBus.busId === bus.busId);
+          const crowd = getCrowdIndicator(bus);
+          const distKm = userLocation ? calculateDistanceKm(userLocation.lat, userLocation.lng, bus.lat, bus.lng) : 0;
+          const distText = formatDistanceText(distKm);
+          const isWithin = isWithinRadius(bus.lat, bus.lng, userLocation.lat, userLocation.lng, radiusFilter);
+
           return (
             <Marker
               key={bus.id || bus.busId}
               position={[bus.lat, bus.lng]}
-              icon={createBusMarkerIcon(bus.number, isSelected)}
+              icon={createBusMarkerIcon(bus.number, isSelected, isWithin)}
               eventHandlers={{
                 click: () => {
-                  setActiveBus(bus);
-                  if (setSelectedBus) setSelectedBus(bus);
+                  setSelectedBus(bus);
                 }
               }}
             >
               <Popup>
-                <div style={{ padding: '4px' }}>
-                  <strong style={{ fontSize: '0.95rem' }}>Bus {bus.number} - {bus.name}</strong>
+                <div style={{ padding: '4px', minWidth: '180px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                    <strong style={{ fontSize: '0.95rem' }}>Bus {bus.number} - {bus.name}</strong>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, background: '#E0F2FE', color: '#0369A1', padding: '2px 6px', borderRadius: 6 }}>
+                      📍 {distText}
+                    </span>
+                  </div>
                   <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 2 }}>
                     {bus.direction === 'REVERSE' ? '⬅️ Reverse Return: ' : '➡️ Forward: '}{bus.destination}
+                  </div>
+                  {/* Smart Crowd Indicator in Popup */}
+                  <div style={{ marginTop: 6, background: crowd.bg, border: `1px solid ${crowd.border}`, padding: '4px 8px', borderRadius: 6, fontSize: '0.74rem', fontWeight: 800, color: crowd.color, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>{crowd.badgeText} ({bus.capacity || '58%'})</span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, color: crowd.waitColor }}>{crowd.waitDecision}</span>
                   </div>
                   {bus.isRealGps ? (
                     <div style={{ background: '#E0F2FE', color: '#0369A1', border: '1px solid #7DD3FC', padding: '3px 8px', borderRadius: 6, fontSize: '0.73rem', fontWeight: 800, marginTop: 4, display: 'inline-block' }}>
@@ -328,7 +477,7 @@ export default function MapView({ selectedBus, setSelectedBus }) {
       </MapContainer>
 
       {/* LINE-BY-LINE LOCATION TIMELINE DRAWER WITH LIVE TRIP DEPARTURE TIME */}
-      {activeBus && (
+      {activeBus && activeCrowd && (
         <div
           style={{
             position: 'absolute',
@@ -340,7 +489,7 @@ export default function MapView({ selectedBus, setSelectedBus }) {
             borderTopLeftRadius: '24px',
             borderTopRightRadius: '24px',
             boxShadow: '0 -8px 30px rgba(0,0,0,0.18)',
-            maxHeight: isDrawerExpanded ? '390px' : '90px',
+            maxHeight: isDrawerExpanded ? '410px' : '90px',
             transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             display: 'flex',
             flexDirection: 'column',
@@ -367,16 +516,15 @@ export default function MapView({ selectedBus, setSelectedBus }) {
                   Bus {activeBus.number} - {activeBus.name}
                 </span>
 
+                {/* Smart Crowd Badge in Drawer Header */}
+                <span style={{ background: activeCrowd.bg, border: `1px solid ${activeCrowd.border}`, color: activeCrowd.color, fontSize: '0.74rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {activeCrowd.badgeText} ({activeCrowd.waitDecision})
+                </span>
+
                 {/* LIVE TRIP START TIME BADGE */}
                 {activeBus.tripStartTime && (
                   <span style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#047857', fontSize: '0.74rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Clock size={12} /> Live Departure: {activeBus.tripStartTime}
-                  </span>
-                )}
-
-                {activeBus.elapsedTime && (
-                  <span style={{ background: '#E0F2FE', border: '1px solid #7DD3FC', color: '#0369A1', fontSize: '0.74rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Timer size={12} /> Ride Time: {activeBus.elapsedTime}
                   </span>
                 )}
               </div>

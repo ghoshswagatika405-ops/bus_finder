@@ -1,16 +1,37 @@
 import React, { useState } from 'react';
-import { Bus, Footprints, MapPin } from 'lucide-react';
-import { BUS_STOPS } from '../data/busData';
+import { Bus, Footprints, MapPin, Users, AlertCircle, CheckCircle2, Navigation } from 'lucide-react';
+import { BUS_STOPS, getCrowdIndicator, calculateDistanceKm, formatDistanceText, isWithinRadius, RADIUS_OPTIONS } from '../data/busData';
 
 export default function NearestStopCard({
   stopName = 'Baramunda BSABT',
   walkTime = '2 min',
   buses = [],
   onTrackBus,
-  onSeeAllStops
+  onSeeAllStops,
+  onShareBus,
+  userLocation,
+  setUserLocation,
+  radiusFilter: parentRadiusFilter,
+  setRadiusFilter: setParentRadiusFilter
 }) {
   const [selectedStopName, setSelectedStopName] = useState(stopName);
+  const [localRadiusFilter, setLocalRadiusFilter] = useState('ALL');
+
+  const radiusFilter = parentRadiusFilter || localRadiusFilter;
+  const setRadiusFilter = setParentRadiusFilter || setLocalRadiusFilter;
+
   const currentStopObj = BUS_STOPS.find((s) => s.name === selectedStopName) || BUS_STOPS[0];
+  const refLat = userLocation?.isLiveGps ? userLocation.lat : currentStopObj.lat;
+  const refLng = userLocation?.isLiveGps ? userLocation.lng : currentStopObj.lng;
+
+  // Filter buses based on Google Maps style proximity distance from chosen stop or GPS
+  const filteredByRadius = buses.filter((bus) => {
+    return isWithinRadius(bus.lat, bus.lng, refLat, refLng, radiusFilter);
+  });
+
+  // Find if any upcoming bus is Full vs Low for Smart Recommendation Banner
+  const fullBus = buses.find((b) => getCrowdIndicator(b).level === 'Full');
+  const lowBus = buses.find((b) => getCrowdIndicator(b).level === 'Low');
 
   return (
     <section style={{ marginBottom: '24px' }}>
@@ -69,38 +90,135 @@ export default function NearestStopCard({
         {/* Subheading Pill */}
         <div className="next-buses-pill">Next Buses (Baramunda ➔ BEC Corridor)</div>
 
+        {/* Google Maps Style Proximity Radius Filter Chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', overflowX: 'auto' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+            <Navigation size={12} color="#1A5CE5" /> Radius:
+          </span>
+          {RADIUS_OPTIONS.map((chip) => (
+            <button
+              key={chip.id}
+              onClick={() => setRadiusFilter(chip.id)}
+              style={{
+                background: radiusFilter === chip.id ? '#1A5CE5' : '#FFFFFF',
+                color: radiusFilter === chip.id ? '#FFFFFF' : '#475569',
+                border: `1px solid ${radiusFilter === chip.id ? '#1A5CE5' : '#CBD5E1'}`,
+                padding: '3px 10px',
+                borderRadius: 12,
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Smart Crowd Recommendation Banner for Passengers */}
+        {fullBus && (
+          <div
+            style={{
+              background: '#FFFBEB',
+              border: '1px solid #FCD34D',
+              borderRadius: '12px',
+              padding: '10px 12px',
+              margin: '10px 14px 4px 14px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: '#92400E',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <AlertCircle size={18} color="#D97706" style={{ flexShrink: 0 }} />
+            <div>
+              <strong>💡 Smart Crowd Recommendation:</strong> Bus {fullBus.number} ({fullBus.name}) is 🔴 Full.
+              {lowBus ? ` Next Bus ${lowBus.number} has 🟢 Low crowd — consider waiting for the next bus!` : ' High rush expected, plan accordingly!'}
+            </div>
+          </div>
+        )}
+
         {/* Bus List */}
         <div className="bus-list">
-          {buses.map((bus) => (
-            <div key={bus.id || bus.busId} className="bus-item" onClick={() => onTrackBus(bus)}>
-              <div className="bus-item-left">
-                <div className="bus-icon-circle">
-                  <Bus size={20} />
+          {filteredByRadius.map((bus) => {
+            const crowd = getCrowdIndicator(bus);
+            const distKm = calculateDistanceKm(currentStopObj.lat, currentStopObj.lng, bus.lat, bus.lng);
+            const distText = formatDistanceText(distKm);
+
+            return (
+              <div key={bus.id || bus.busId} className="bus-item" onClick={() => onTrackBus(bus)}>
+                <div className="bus-item-left">
+                  <div className="bus-icon-circle">
+                    <Bus size={20} />
+                  </div>
+                  <div className="bus-details">
+                    <div className="bus-number" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>Bus {bus.number} - {bus.name}</span>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          color: '#0284C7',
+                          background: '#E0F2FE',
+                          border: '1px solid #7DD3FC',
+                          padding: '2px 6px',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 2
+                        }}
+                      >
+                        📍 {distText}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          color: crowd.color,
+                          background: crowd.bg,
+                          border: `1px solid ${crowd.border}`,
+                          padding: '2px 6px',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 2
+                        }}
+                      >
+                        {crowd.badgeText}
+                      </span>
+                    </div>
+                    <div className="bus-destination" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      <span>{bus.destination}</span>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: crowd.waitColor, marginTop: 2 }}>
+                      👉 Advice: {crowd.waitDecision} ({crowd.waitAdvice})
+                    </div>
+                  </div>
                 </div>
-                <div className="bus-details">
-                  <div className="bus-number">Bus {bus.number} - {bus.name}</div>
-                  <div className="bus-destination">{bus.destination}</div>
+
+                <div className="bus-item-right">
+                  <span className="bus-time">{bus.time}</span>
+                  <button
+                    className="track-now-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTrackBus(bus);
+                    }}
+                  >
+                    Live Track
+                  </button>
                 </div>
               </div>
+            );
+          })}
 
-              <div className="bus-item-right">
-                <span className="bus-time">{bus.time}</span>
-                <button
-                  className="track-now-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTrackBus(bus);
-                  }}
-                >
-                  Live Track
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {buses.length === 0 && (
+          {filteredByRadius.length === 0 && (
             <div style={{ textAlign: 'center', padding: '20px', color: '#64748B', fontSize: '0.9rem' }}>
-              No buses found matching your search.
+              No buses found within {radiusFilter} from {currentStopObj.name}.
             </div>
           )}
         </div>
@@ -108,3 +226,4 @@ export default function NearestStopCard({
     </section>
   );
 }
+

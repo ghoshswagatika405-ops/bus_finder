@@ -7,10 +7,15 @@ import MapView from './components/MapView';
 import RoutesView from './components/RoutesView';
 import ScheduleView from './components/ScheduleView';
 import AllBusesView from './components/AllBusesView';
+import LostAndFoundView from './components/LostAndFoundView';
+import VoiceAssistantModal from './components/VoiceAssistantModal';
 import BottomNav from './components/BottomNav';
 import DriverPanel from './components/DriverPanel';
+import ShareLocationModal from './components/ShareLocationModal';
 import { BUSES_LIST } from './data/busData';
 import { Smartphone, Monitor, UserCheck, SplitSquareVertical, Database } from 'lucide-react';
+import './firebase';
+
 
 export default function App() {
   const [buses, setBuses] = useState(BUSES_LIST);
@@ -20,24 +25,52 @@ export default function App() {
   const [selectedBus, setSelectedBus] = useState(null);
   const [currentTime, setCurrentTime] = useState('1:41');
   const [isMongoConnected, setIsMongoConnected] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareModalBus, setShareModalBus] = useState(null);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
-  // Fetch initial bus data from Express MongoDB Backend API
+  // Proximity Distance & User Location State (Google Maps Style 500m, 1km, 2km radius search)
+  const [userLocation, setUserLocation] = useState({
+    lat: 20.2785,
+    lng: 85.7892,
+    name: 'Baramunda BSABT',
+    isLiveGps: false
+  });
+  const [radiusFilter, setRadiusFilter] = useState('ALL');
+
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
+
+  // Fetch initial bus data and poll Express Backend API every 3 seconds for live sync
   useEffect(() => {
-    const fetchMongoDBData = async () => {
+    let isMounted = true;
+
+    const fetchBackendData = async () => {
       try {
         const res = await fetch('http://localhost:5000/api/buses');
         if (res.ok) {
           const data = await res.json();
-          if (data && data.length > 0) {
-            setBuses(data);
-            setIsMongoConnected(true);
+          if (isMounted && data && data.length > 0) {
+            setBuses((prev) => {
+              // Merge server updates into state
+              return data.map((serverBus) => {
+                const local = prev.find((b) => b.id === serverBus.id || b.busId === serverBus.busId);
+                return local ? { ...local, ...serverBus } : serverBus;
+              });
+            });
+            setIsBackendConnected(true);
           }
         }
       } catch (err) {
-        console.log('MongoDB Backend API offline. Using local dataset.');
+        if (isMounted) setIsBackendConnected(false);
       }
     };
-    fetchMongoDBData();
+
+    fetchBackendData();
+    const interval = setInterval(fetchBackendData, 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Live Time clock update
@@ -95,6 +128,11 @@ export default function App() {
     setActiveTab('map');
   };
 
+  const handleShareBus = (bus) => {
+    setShareModalBus(bus || selectedBus || buses[0]);
+    setIsShareModalOpen(true);
+  };
+
   // Filter bus list based on search query (Bus number, name, destination, or origin)
   const filteredBuses = buses.filter((bus) => {
     if (!searchQuery.trim()) return true;
@@ -118,9 +156,11 @@ export default function App() {
           />
           <div>
             <h1>🚌 Bhubaneswar Engineering College (BEC) Bus Tracker</h1>
-            <div style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, color: isMongoConnected ? '#4ADE80' : '#CBD5E1' }}>
+            <div style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, color: isBackendConnected ? '#4ADE80' : '#FBBF24' }}>
               <Database size={14} />
-              <span>MongoDB Database: {isMongoConnected ? 'CONNECTED (Live MongoDB API)' : 'ACTIVE (MongoDB Express Ready)'}</span>
+              <span>
+                Express Backend API (Port 5000): {isBackendConnected ? '🟢 ONLINE & LIVE SYNC' : '🟡 ACTIVE (Express Fallback Mode)'}
+              </span>
             </div>
           </div>
         </div>
@@ -165,6 +205,7 @@ export default function App() {
               activeBus={selectedBus}
               onUpdateBusLocation={handleUpdateBusLocation}
               onUpdateBusDetails={handleUpdateBusDetails}
+              onShareBus={handleShareBus}
             />
           </div>
         )}
@@ -177,6 +218,10 @@ export default function App() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               currentTime={currentTime}
+              onOpenShareModal={() => handleShareBus(selectedBus || buses[0])}
+              userLocation={userLocation}
+              setUserLocation={setUserLocation}
+              onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
             />
 
             {/* Dynamic Scrollable Content Area */}
@@ -186,16 +231,54 @@ export default function App() {
                   {/* 2x2 Quick Actions Cards Grid */}
                   <QuickActions activeTab={activeTab} setActiveTab={setActiveTab} />
 
+                  {/* Lost & Found Quick Report Banner for Wallet, Phone, Bag, ID Card */}
+                  <div
+                    onClick={() => setActiveTab('lost_found')}
+                    style={{
+                      background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                      borderRadius: '20px',
+                      padding: '16px 18px',
+                      margin: '0 0 20px 0',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#38BDF8', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                        📦 Lost & Found Desk
+                      </div>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 800, marginTop: 2, color: '#FFFFFF' }}>
+                        Lost a Wallet, Phone, Bag, or ID Card?
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: 2 }}>
+                        Report missing items or claim found belongings ➔
+                      </div>
+                    </div>
+                    <div style={{ background: '#1A5CE5', color: '#FFFFFF', padding: '9px 14px', borderRadius: 14, fontSize: '0.78rem', fontWeight: 800, whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(26, 92, 229, 0.4)' }}>
+                      Report Now
+                    </div>
+                  </div>
+
                   {/* Nearby Banner */}
                   <NearbyBanner onSeeAll={() => setActiveTab('map')} />
 
                   {/* Nearest Bus Stop Section for Patia to Pitapalli Route */}
                   <NearestStopCard
-                    stopName="Patia Square (KIIT)"
+                    stopName="Baramunda BSABT"
                     walkTime="2 min"
                     buses={filteredBuses}
                     onTrackBus={handleTrackBus}
                     onSeeAllStops={() => setActiveTab('all_buses')}
+                    onShareBus={handleShareBus}
+                    userLocation={userLocation}
+                    setUserLocation={setUserLocation}
+                    radiusFilter={radiusFilter}
+                    setRadiusFilter={setRadiusFilter}
                   />
                 </>
               )}
@@ -204,6 +287,11 @@ export default function App() {
                 <AllBusesView
                   buses={buses}
                   onTrackBus={handleTrackBus}
+                  onShareBus={handleShareBus}
+                  userLocation={userLocation}
+                  setUserLocation={setUserLocation}
+                  radiusFilter={radiusFilter}
+                  setRadiusFilter={setRadiusFilter}
                 />
               )}
 
@@ -211,6 +299,11 @@ export default function App() {
                 <MapView
                   selectedBus={selectedBus}
                   setSelectedBus={setSelectedBus}
+                  onShareBus={handleShareBus}
+                  userLocation={userLocation}
+                  setUserLocation={setUserLocation}
+                  radiusFilter={radiusFilter}
+                  setRadiusFilter={setRadiusFilter}
                 />
               )}
 
@@ -226,6 +319,10 @@ export default function App() {
               {activeTab === 'schedule' && (
                 <ScheduleView />
               )}
+
+              {activeTab === 'lost_found' && (
+                <LostAndFoundView onTrackBus={handleTrackBus} />
+              )}
             </main>
 
             {/* Fixed Bottom Navigation Bar */}
@@ -233,6 +330,22 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Share Location Modal Dialog */}
+      <ShareLocationModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        bus={shareModalBus || selectedBus || buses[0]}
+      />
+
+      {/* BEC AI Voice Assistant Modal Dialog */}
+      <VoiceAssistantModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        buses={buses}
+        userLocation={userLocation}
+        onTrackBus={handleTrackBus}
+      />
     </div>
   );
 }
