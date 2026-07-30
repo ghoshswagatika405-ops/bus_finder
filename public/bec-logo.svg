@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <path id="textPath" d="M 70,200 A 130,130 0 1,1 330,200 A 130,130 0 1,1 70,200" />
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Outer Dark Blue Ring -->
+  <circle cx="200" cy="200" r="180" fill="#2563EB" filter="url(#softShadow)"/>
+  <circle cx="200" cy="200" r="172" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+
+  <!-- Curved Text "BHUBANESWAR ENGINEERING COLLEGE" -->
+  <text font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="24" font-weight="900" fill="#FFFFFF" letter-spacing="4">
+    <textPath href="#textPath" startOffset="50%" text-anchor="middle">
+      BHUBANESWAR ENGINEERING COLLEGE
+    </textPath>
+  </text>
+
+  <!-- Inner Cyan Gear / Cog Circle -->
+  <circle cx="200" cy="200" r="120" fill="#0284C7"/>
+  <circle cx="200" cy="200" r="115" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+
+  <!-- Gear Teeth -->
+  <g fill="#0284C7" stroke="#FFFFFF" stroke-width="2">
+    <rect x="188" y="70" width="24" height="20" rx="3" />
+    <rect x="188" y="310" width="24" height="20" rx="3" />
+    <rect x="70" y="188" width="20" height="24" rx="3" />
+    <rect x="310" y="188" width="20" height="24" rx="3" />
+  </g>
+
+  <!-- Central White Frame -->
+  <rect x="110" y="110" width="180" height="180" rx="12" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="6"/>
+
+  <!-- Set Square Triangle -->
+  <polygon points="125,275 275,275 125,125" fill="#E2E8F0" stroke="#1E3A8A" stroke-width="4"/>
+  <polygon points="145,260 240,260 145,165" fill="#FFFFFF" stroke="#1E3A8A" stroke-width="3"/>
+
+  <!-- Protractor & Compass Geometry Tools -->
+  <path d="M 150,250 A 45,45 0 0,1 240,250 Z" fill="none" stroke="#1E3A8A" stroke-width="4"/>
+  <line x1="195" y1="205" x2="195" y2="250" stroke="#1E3A8A" stroke-width="3"/>
+  <line x1="160" y1="220" x2="230" y2="220" stroke="#1E3A8A" stroke-width="2"/>
+
+  <!-- Compass Tool -->
+  <circle cx="245" cy="155" r="8" fill="#2563EB"/>
+  <line x1="245" y1="155" x2="225" y2="210" stroke="#1E3A8A" stroke-width="5" stroke-linecap="round"/>
+  <line x1="245" y1="155" x2="265" y2="210" stroke="#1E3A8A" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="225" cy="210" r="3" fill="#1E3A8A"/>
+  <circle cx="265" cy="210" r="3" fill="#1E3A8A"/>
+</svg>
