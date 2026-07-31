@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Wifi, Battery, Signal, MapPin, Locate, Mic } from 'lucide-react';
+import { Search, Wifi, Battery, Signal, MapPin, Locate, Mic, ShieldAlert } from 'lucide-react';
 
 export default function Header({
   searchQuery,
@@ -8,7 +8,8 @@ export default function Header({
   onOpenShareModal,
   userLocation,
   setUserLocation,
-  onOpenVoiceModal
+  onOpenVoiceModal,
+  onOpenComplaintModal
 }) {
   const handleGetLiveGPS = () => {
     if (!navigator.geolocation) {
@@ -73,6 +74,28 @@ export default function Header({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Confidential Head Office Complain Box Trigger */}
+            <button
+              onClick={onOpenComplaintModal}
+              style={{
+                background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                color: '#FFFFFF',
+                borderRadius: 14,
+                padding: '4px 10px',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.5)'
+              }}
+              title="Student & Staff Complain Box (Direct SMS to BEC Head Office)"
+            >
+              <ShieldAlert size={13} />
+              <span>🚨 Complain</span>
+            </button>
             {/* AI Voice Assistant Trigger Button */}
             <button
               onClick={onOpenVoiceModal}

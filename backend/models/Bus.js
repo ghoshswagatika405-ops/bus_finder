@@ -18,7 +18,14 @@ const busSchema = new mongoose.Schema(
     crowdLevel: { type: String, default: 'Medium' },
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
-    realAddress: { type: String, default: 'Patia to Pitapalli Highway, Bhubaneswar' }
+    realAddress: { type: String, default: 'Patia to Pitapalli Highway, Bhubaneswar' },
+
+    // Student & Staff Crowdsourced GPS Fields
+    crowdLat: { type: Number, default: null },
+    crowdLng: { type: Number, default: null },
+    lastCrowdPingTime: { type: String, default: null },
+    activePassengersCount: { type: Number, default: 0 },
+    locationSource: { type: String, default: 'SCHEDULE' } // 'DRIVER_GPS', 'CROWD_GPS', 'SCHEDULE'
   },
   { timestamps: true }
 );

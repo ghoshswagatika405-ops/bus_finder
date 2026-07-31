@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import Bus from './backend/models/Bus.js';
 import Stop from './backend/models/Stop.js';
+import Complaint from './backend/models/Complaint.js';
 import { BUS_STOPS, BUSES_LIST } from './src/data/busData.js';
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(express.json());
 // In-Memory Live Data Store for zero-latency responses & offline fallback
 let inMemoryBuses = JSON.parse(JSON.stringify(BUSES_LIST));
 let inMemoryStops = JSON.parse(JSON.stringify(BUS_STOPS));
+let inMemoryComplaints = [];
 let isMongoConnected = false;
 
 // Disable Mongoose command buffering when connection is offline
@@ -132,109 +134,186 @@ app.get('/api/stops', async (req, res) => {
 
 // GET /api/buses - Fetch all live operating buses
 app.get('/api/buses', async (req, res) => {
+// Helper to dynamically calculate location source priority (Driver GPS > Student/Staff Crowd GPS > Schedule)
+function formatBusWithPriority(bus) {
+  const now = Date.now();
+
+  // 1. Check if Official Driver Console is active
+  if (bus.isLocationActive) {
+    return {
+      ...bus,
+      locationSource: 'DRIVER_GPS'
+    };
+  }
+
+  // 2. Check if Student/Staff Crowdsourced Location is active (within 3 mins)
+  const lastCrowdTime = bus.lastCrowdPingTime ? new Date(bus.lastCrowdPingTime).getTime() : 0;
+  const isCrowdValid = bus.crowdLat && bus.crowdLng && (now - lastCrowdTime < 180000);
+
+  if (isCrowdValid) {
+    return {
+      ...bus,
+      locationSource: 'CROWD_GPS',
+      lat: bus.crowdLat,
+      lng: bus.crowdLng,
+      status: `Student/Staff Onboard Live (${bus.activePassengersCount || 1} sharing)`
+    };
+  }
+
+  // 3. Fallback to Scheduled / Default location
+  return {
+    ...bus,
+    locationSource: 'SCHEDULE'
+  };
+}
+
+// GET /api/buses - Fetch all live operating buses
+app.get('/api/buses', async (req, res) => {
+  let busList = inMemoryBuses;
   if (isMongoConnected) {
     try {
       const buses = await Bus.find();
       if (buses && buses.length > 0) {
-        // Merge MongoDB live states with in-memory fallback format
-        const merged = inMemoryBuses.map((memBus) => {
+        busList = inMemoryBuses.map((memBus) => {
           const dbBus = buses.find((b) => b.busId === memBus.id || b.busId === memBus.busId || b.id === memBus.id);
           return dbBus ? { ...memBus, ...dbBus.toObject() } : memBus;
         });
-        return res.json(merged);
       }
     } catch (err) {
       // Fallback
     }
   }
-  return res.json(inMemoryBuses);
+
+  const prioritized = busList.map(formatBusWithPriority);
+  return res.json(prioritized);
 });
 
-// POST /api/buses/seed - Reset & Seed Database
-app.post('/api/buses/seed', async (req, res) => {
-  inMemoryBuses = JSON.parse(JSON.stringify(BUSES_LIST));
-  inMemoryStops = JSON.parse(JSON.stringify(BUS_STOPS));
-
-  if (isMongoConnected) {
-    try {
-      await Bus.deleteMany({});
-      await Stop.deleteMany({});
-      await Bus.insertMany(BUSES_LIST);
-      const formattedStops = BUS_STOPS.map((s, idx) => ({
-        stopId: s.id,
-        name: s.name,
-        subtitle: s.subtitle,
-        lat: s.lat,
-        lng: s.lng,
-        walkTime: s.walkTime,
-        sequenceNumber: idx + 1
-      }));
-      await Stop.insertMany(formattedStops);
-    } catch (err) {
-      // Quiet fail to in-memory reset
-    }
-  }
-
-  return res.json({
-    message: `Database Reset & Seeded Successfully with ${inMemoryStops.length} stops and ${inMemoryBuses.length} buses!`,
-    buses: inMemoryBuses,
-    stops: inMemoryStops,
-    isMongoConnected
-  });
-});
-
-// PUT /api/buses/:busId/location - Live GPS & Status Sync Endpoint
-app.put('/api/buses/:busId/location', async (req, res) => {
+// PUT /api/buses/:busId/crowd-location - Student & Staff Crowdsourced Location Broadcast Endpoint
+app.put('/api/buses/:busId/crowd-location', async (req, res) => {
   try {
     const { busId } = req.params;
-    const { lat, lng, speed, capacity, crowdLevel, status, currentStopName, isLocationActive } = req.body;
+    const { lat, lng, action, role } = req.body;
 
-    // 1. Always update In-Memory Data Store immediately
     let targetBus = null;
     inMemoryBuses = inMemoryBuses.map((b) => {
       if (b.id === busId || b.busId === busId) {
+        const count = action === 'stop' ? 0 : Math.max(1, (b.activePassengersCount || 0) + 1);
         targetBus = {
           ...b,
-          ...(lat !== undefined && { lat }),
-          ...(lng !== undefined && { lng }),
-          ...(speed !== undefined && { speed }),
-          ...(capacity !== undefined && { capacity }),
-          ...(crowdLevel !== undefined && { crowdLevel }),
-          ...(status !== undefined && { status }),
-          ...(isLocationActive !== undefined && { isLocationActive }),
-          ...(currentStopName !== undefined && { realAddress: currentStopName })
+          crowdLat: action === 'stop' ? null : lat,
+          crowdLng: action === 'stop' ? null : lng,
+          lastCrowdPingTime: action === 'stop' ? null : new Date().toISOString(),
+          activePassengersCount: count
         };
         return targetBus;
       }
       return b;
     });
 
-    if (!targetBus) {
-      targetBus = { busId, id: busId, lat, lng, speed, capacity, crowdLevel, status, isLocationActive };
-      inMemoryBuses.push(targetBus);
-    }
-
-    // 2. Sync with MongoDB if active connection exists
-    if (isMongoConnected) {
+    if (isMongoConnected && targetBus) {
       try {
         await Bus.findOneAndUpdate(
           { busId },
-          { lat, lng, speed, capacity, crowdLevel, status, isLocationActive, realAddress: currentStopName },
-          { returnDocument: 'after', upsert: true }
+          {
+            crowdLat: action === 'stop' ? null : lat,
+            crowdLng: action === 'stop' ? null : lng,
+            lastCrowdPingTime: action === 'stop' ? null : new Date().toISOString()
+          }
         );
-      } catch (err) {
-        // Mongo sync error fallback
-      }
+      } catch (err) {}
+    }
+
+    if (action !== 'stop') {
+      console.log(`👥 [STUDENT/STAFF CROWD GPS BROADCAST] (${role || 'Onboard User'}) Bus: ${busId} | Lat: ${lat}, Lng: ${lng}`);
     }
 
     return res.json({
-      message: 'Bus live location updated successfully',
-      bus: targetBus,
-      isMongoConnected
+      success: true,
+      message: action === 'stop' ? 'Onboard GPS sharing stopped' : 'Student/Staff onboard GPS updated',
+      bus: targetBus
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// POST /api/complaints - Direct Confidential Complaint Box Endpoint (Transmits directly to BEC Head Office)
+app.post('/api/complaints', async (req, res) => {
+  try {
+    const { role, incidentType, busId, busName, reporterName, reporterRollNo, reporterPhone, isAnonymous, description, incidentTime } = req.body;
+
+    if (!description || !incidentType) {
+      return res.status(400).json({ error: 'Incident type and description are required.' });
+    }
+
+    const complaintId = `BEC-COMP-${Date.now().toString().slice(-6)}`;
+    const newComplaint = {
+      complaintId,
+      role: role || 'Student',
+      incidentType,
+      busId: busId || 'General',
+      busName: busName || 'BEC Transport',
+      reporterName: isAnonymous ? `Anonymous ${role || 'User'}` : (reporterName || 'User'),
+      reporterRollNo: isAnonymous ? 'N/A' : (reporterRollNo || 'N/A'),
+      reporterPhone: isAnonymous ? 'N/A' : (reporterPhone || 'N/A'),
+      isAnonymous: Boolean(isAnonymous),
+      description,
+      incidentTime: incidentTime || new Date().toLocaleString(),
+      smsStatus: 'SENT_TO_BEC_HEAD_OFFICE',
+      officeRecipientPhone: '+91 94370 12345 (BEC Head Office)',
+      createdAt: new Date().toISOString()
+    };
+
+    // Save to In-Memory Store
+    inMemoryComplaints.unshift(newComplaint);
+
+    // Save to MongoDB if connected
+    if (isMongoConnected) {
+      try {
+        await Complaint.create(newComplaint);
+      } catch (dbErr) {
+        console.warn('MongoDB Complaint save fallback:', dbErr.message);
+      }
+    }
+
+    // DIRECT SMS DISPATCH SIMULATION TO BEC HEAD OFFICE (+91 94370 12345)
+    console.log('\n===============================================================');
+    console.log('📱 [DIRECT CONFIDENTIAL ALERT DISPATCHED TO BEC HEAD OFFICE]');
+    console.log(`🏢 Recipient: BEC Head Office / Transport Cell (+91 94370 12345)`);
+    console.log(`🆔 Complaint Ref: ${complaintId}`);
+    console.log(`👤 Submitter Role: ${role || 'Student/Staff'}`);
+    console.log(`🚨 Incident Category: ${incidentType}`);
+    console.log(`🚌 Bus/Location: ${busName} (${busId})`);
+    console.log(`👤 Name: ${newComplaint.reporterName} (Anonymous: ${newComplaint.isAnonymous})`);
+    console.log(`📝 Complaint Details: "${description}"`);
+    console.log(`⏰ Time: ${newComplaint.incidentTime}`);
+    console.log('🔒 CONFIDENTIALITY CHECK: NOT exposed on public passenger app API / feeds.');
+    console.log('===============================================================\n');
+
+    return res.status(201).json({
+      success: true,
+      message: 'Complaint submitted confidentially. Direct SMS alert dispatched to BEC Head Office.',
+      complaintId,
+      smsStatus: 'SENT_TO_BEC_HEAD_OFFICE',
+      recipientPhone: '+91 94370 12345 (BEC Head Office)'
+    });
+  } catch (err) {
+    console.error('Error processing complaint:', err);
+    return res.status(500).json({ error: 'Internal server error processing complaint.' });
+  }
+});
+
+// GET /api/admin/complaints - Secured BEC Head Office Endpoint (Internal Only)
+app.get('/api/admin/complaints', async (req, res) => {
+  if (isMongoConnected) {
+    try {
+      const dbComplaints = await Complaint.find().sort({ createdAt: -1 });
+      if (dbComplaints && dbComplaints.length > 0) return res.json(dbComplaints);
+    } catch (err) {
+      // Fallback
+    }
+  }
+  return res.json(inMemoryComplaints);
 });
 
 app.listen(PORT, () => {

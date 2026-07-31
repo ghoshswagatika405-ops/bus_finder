@@ -12,8 +12,10 @@ import VoiceAssistantModal from './components/VoiceAssistantModal';
 import BottomNav from './components/BottomNav';
 import DriverPanel from './components/DriverPanel';
 import ShareLocationModal from './components/ShareLocationModal';
+import ComplaintModal from './components/ComplaintModal';
+import OnboardPassengerBanner from './components/OnboardPassengerBanner';
 import { BUSES_LIST } from './data/busData';
-import { Smartphone, Monitor, UserCheck, SplitSquareVertical, Database, Menu, X } from 'lucide-react';
+import { Smartphone, Monitor, UserCheck, SplitSquareVertical, Database, Menu, X, ShieldAlert } from 'lucide-react';
 import './firebase';
 
 
@@ -28,6 +30,7 @@ export default function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareModalBus, setShareModalBus] = useState(null);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isComplaintModalOpen, setIsComplaintModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Proximity Distance & User Location State (Google Maps Style 500m, 1km, 2km radius search)
@@ -135,6 +138,17 @@ export default function App() {
       }
       return prevSelected;
     });
+  };
+
+  // Sync Student & Staff Crowdsourced Location Ping ("Where Is My Bus")
+  const handleCrowdLocationPing = async (busId, crowdData) => {
+    try {
+      await fetch(`http://localhost:5000/api/buses/${busId}/crowd-location`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(crowdData)
+      });
+    } catch (err) {}
   };
 
   // Track bus trigger from Home tab or All Buses tab -> automatically switches to Map view with target bus selected
@@ -306,26 +320,38 @@ export default function App() {
               userLocation={userLocation}
               setUserLocation={setUserLocation}
               onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
+              onOpenComplaintModal={() => setIsComplaintModalOpen(true)}
             />
 
             {/* Dynamic Scrollable Content Area */}
             <main className="app-content">
               {activeTab === 'home' && (
                 <>
-                  {/* 2x2 Quick Actions Cards Grid */}
-                  <QuickActions activeTab={activeTab} setActiveTab={setActiveTab} />
+                  {/* 2x3 Quick Actions Cards Grid */}
+                  <QuickActions
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    onOpenComplaintModal={() => setIsComplaintModalOpen(true)}
+                  />
+
+                  {/* Student & Staff Crowdsourced "Where Is My Bus" Banner */}
+                  <OnboardPassengerBanner
+                    buses={buses}
+                    onCrowdLocationPing={handleCrowdLocationPing}
+                  />
 
                   {/* Lost & Found Quick Report Banner for Wallet, Phone, Bag, ID Card */}
                   <div
                     onClick={() => setActiveTab('lost_found')}
                     style={{
-                      background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+                      background: '#FFFFFF',
+                      border: '1px solid rgba(226, 232, 240, 0.8)',
                       borderRadius: '20px',
                       padding: '16px 18px',
                       margin: '0 0 20px 0',
-                      color: '#FFFFFF',
+                      color: '#0F172A',
                       cursor: 'pointer',
-                      boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -333,13 +359,13 @@ export default function App() {
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#38BDF8', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.6 }}>
                         📦 Lost & Found Desk
                       </div>
-                      <div style={{ fontSize: '0.96rem', fontWeight: 800, marginTop: 2, color: '#FFFFFF' }}>
+                      <div style={{ fontSize: '0.96rem', fontWeight: 800, marginTop: 2, color: '#0F172A' }}>
                         Lost a Wallet, Phone, Bag, or ID Card?
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: 2 }}>
+                      <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
                         Report missing items or claim found belongings ➔
                       </div>
                     </div>
@@ -430,6 +456,13 @@ export default function App() {
         buses={buses}
         userLocation={userLocation}
         onTrackBus={handleTrackBus}
+      />
+
+      {/* BEC Head Office Direct Confidential Complain Box Modal */}
+      <ComplaintModal
+        isOpen={isComplaintModalOpen}
+        onClose={() => setIsComplaintModalOpen(false)}
+        buses={buses}
       />
     </div>
   );
