@@ -13,13 +13,13 @@ import BottomNav from './components/BottomNav';
 import DriverPanel from './components/DriverPanel';
 import ShareLocationModal from './components/ShareLocationModal';
 import { BUSES_LIST } from './data/busData';
-import { Smartphone, Monitor, UserCheck, SplitSquareVertical, Database } from 'lucide-react';
+import { Smartphone, Monitor, UserCheck, SplitSquareVertical, Database, Menu, X } from 'lucide-react';
 import './firebase';
 
 
 export default function App() {
   const [buses, setBuses] = useState(BUSES_LIST);
-  const [panelMode, setPanelMode] = useState('dual'); // 'passenger', 'driver', 'dual'
+  const [panelMode, setPanelMode] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'passenger' : 'dual'));
   const [activeTab, setActiveTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBus, setSelectedBus] = useState(null);
@@ -28,6 +28,7 @@ export default function App() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [shareModalBus, setShareModalBus] = useState(null);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Proximity Distance & User Location State (Google Maps Style 500m, 1km, 2km radius search)
   const [userLocation, setUserLocation] = useState({
@@ -160,45 +161,123 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Panel View Selector Header */}
+      {/* Panel View Selector Header with 3-Bar Hamburger Menu */}
       <div className="mode-bar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img
-            src="/bec-logo.svg"
-            alt="Bhubaneswar Engineering College Logo"
-            style={{ width: 44, height: 44, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))' }}
-          />
-          <div>
-            <h1>🚌 Bhubaneswar Engineering College (BEC) Bus Tracker</h1>
-            <div style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, color: isBackendConnected ? '#4ADE80' : '#FBBF24' }}>
-              <Database size={14} />
-              <span>
-                Express Backend API (Port 5000): {isBackendConnected ? '🟢 ONLINE & LIVE SYNC' : '🟡 ACTIVE (Express Fallback Mode)'}
-              </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img
+              src="/bec-logo.svg"
+              alt="Bhubaneswar Engineering College Logo"
+              style={{ width: 36, height: 36, filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.3))' }}
+            />
+            <div>
+              <h1 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, color: '#FFFFFF', letterSpacing: '-0.2px' }}>
+                🚌 BEC Bus Tracker
+              </h1>
+              <div style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, color: isBackendConnected ? '#4ADE80' : '#FBBF24' }}>
+                <Database size={12} />
+                <span>Backend API: {isBackendConnected ? '🟢 ONLINE & LIVE SYNC' : '🟡 ACTIVE (Express Mode)'}</span>
+              </div>
             </div>
           </div>
+
+          {/* Desktop Mode Toggle Buttons */}
+          <div className="desktop-mode-btns" style={{ display: 'flex', gap: 8 }}>
+            <button
+              className={`toggle-btn ${panelMode === 'passenger' ? 'active-mode' : ''}`}
+              onClick={() => setPanelMode('passenger')}
+            >
+              <Smartphone size={14} /> Passenger App
+            </button>
+            <button
+              className={`toggle-btn ${panelMode === 'driver' ? 'active-mode' : ''}`}
+              onClick={() => setPanelMode('driver')}
+            >
+              <UserCheck size={14} /> Driver Console
+            </button>
+            <button
+              className={`toggle-btn ${panelMode === 'dual' ? 'active-mode' : ''}`}
+              onClick={() => setPanelMode('dual')}
+            >
+              <SplitSquareVertical size={14} /> Dual View
+            </button>
+          </div>
+
+          {/* Mobile 3-Bar (Hamburger) Menu Button */}
+          <button
+            className="mobile-hamburger-btn"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{
+              background: isMobileMenuOpen ? '#1A5CE5' : 'rgba(255, 255, 255, 0.14)',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              color: '#FFFFFF',
+              borderRadius: 14,
+              padding: '8px 12px',
+              fontSize: '0.85rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+            title="3-Bar Menu"
+          >
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            <span style={{ fontSize: '0.78rem' }}>Menu</span>
+          </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            className={`toggle-btn ${panelMode === 'passenger' ? 'active-mode' : ''}`}
-            onClick={() => setPanelMode('passenger')}
+        {/* Mobile 3-Bar Hamburger Dropdown Menu */}
+        {isMobileMenuOpen && (
+          <div
+            className="mobile-dropdown-menu"
+            style={{
+              width: '100%',
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: '1px solid rgba(255, 255, 255, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10
+            }}
           >
-            <Smartphone size={14} /> Passenger App View
-          </button>
-          <button
-            className={`toggle-btn ${panelMode === 'driver' ? 'active-mode' : ''}`}
-            onClick={() => setPanelMode('driver')}
-          >
-            <UserCheck size={14} /> Driver Console
-          </button>
-          <button
-            className={`toggle-btn ${panelMode === 'dual' ? 'active-mode' : ''}`}
-            onClick={() => setPanelMode('dual')}
-          >
-            <SplitSquareVertical size={14} /> Dual Side-by-Side View
-          </button>
-        </div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.6 }}>
+              Select Display Mode:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+              <button
+                className={`toggle-btn ${panelMode === 'passenger' ? 'active-mode' : ''}`}
+                onClick={() => {
+                  setPanelMode('passenger');
+                  setIsMobileMenuOpen(false);
+                }}
+                style={{ justifyContent: 'center', padding: '8px 6px', fontSize: '0.76rem' }}
+              >
+                <Smartphone size={13} /> Passenger
+              </button>
+              <button
+                className={`toggle-btn ${panelMode === 'driver' ? 'active-mode' : ''}`}
+                onClick={() => {
+                  setPanelMode('driver');
+                  setIsMobileMenuOpen(false);
+                }}
+                style={{ justifyContent: 'center', padding: '8px 6px', fontSize: '0.76rem' }}
+              >
+                <UserCheck size={13} /> Driver
+              </button>
+              <button
+                className={`toggle-btn ${panelMode === 'dual' ? 'active-mode' : ''}`}
+                onClick={() => {
+                  setPanelMode('dual');
+                  setIsMobileMenuOpen(false);
+                }}
+                style={{ justifyContent: 'center', padding: '8px 6px', fontSize: '0.76rem' }}
+              >
+                <SplitSquareVertical size={13} /> Dual
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Dual or Single Panel Layout */}
