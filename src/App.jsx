@@ -98,6 +98,13 @@ export default function App() {
       })
     );
 
+    setSelectedBus((prevSelected) => {
+      if (prevSelected && (prevSelected.id === busId || prevSelected.busId === busId)) {
+        return { ...prevSelected, ...newCoords };
+      }
+      return prevSelected;
+    });
+
     // Save location update to MongoDB Database
     try {
       await fetch(`http://localhost:5000/api/buses/${busId}/location`, {
@@ -120,6 +127,13 @@ export default function App() {
         return b;
       })
     );
+
+    setSelectedBus((prevSelected) => {
+      if (prevSelected && (prevSelected.id === busId || prevSelected.busId === busId)) {
+        return { ...prevSelected, ...newDetails };
+      }
+      return prevSelected;
+    });
   };
 
   // Track bus trigger from Home tab or All Buses tab -> automatically switches to Map view with target bus selected
@@ -147,7 +161,7 @@ export default function App() {
   return (
     <div className="app-container">
       {/* Panel View Selector Header */}
-      <div className="mode-bar" style={{ maxWidth: '1000px' }}>
+      <div className="mode-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img
             src="/bec-logo.svg"
@@ -170,7 +184,7 @@ export default function App() {
             className={`toggle-btn ${panelMode === 'passenger' ? 'active-mode' : ''}`}
             onClick={() => setPanelMode('passenger')}
           >
-            <Smartphone size={14} /> Passenger App
+            <Smartphone size={14} /> Passenger App View
           </button>
           <button
             className={`toggle-btn ${panelMode === 'driver' ? 'active-mode' : ''}`}
@@ -182,25 +196,16 @@ export default function App() {
             className={`toggle-btn ${panelMode === 'dual' ? 'active-mode' : ''}`}
             onClick={() => setPanelMode('dual')}
           >
-            <SplitSquareVertical size={14} /> Dual Side-by-Side Panel
+            <SplitSquareVertical size={14} /> Dual Side-by-Side View
           </button>
         </div>
       </div>
 
       {/* Main Dual or Single Panel Layout */}
-      <div
-        style={{
-          width: '100%',
-          display: 'flex',
-          gap: '24px',
-          justifyContent: 'center',
-          alignItems: 'flex-start',
-          maxWidth: panelMode === 'dual' ? '1000px' : '430px'
-        }}
-      >
+      <div className="main-layout-container">
         {/* DRIVER PANEL VIEW */}
         {(panelMode === 'driver' || panelMode === 'dual') && (
-          <div style={{ flex: 1, minWidth: '320px', maxWidth: panelMode === 'dual' ? '460px' : '100%' }}>
+          <div className="driver-panel-wrapper" style={{ flex: panelMode === 'dual' ? '0 0 460px' : '1', maxWidth: panelMode === 'driver' ? '1000px' : '460px' }}>
             <DriverPanel
               activeBus={selectedBus}
               onUpdateBusLocation={handleUpdateBusLocation}
@@ -212,7 +217,7 @@ export default function App() {
 
         {/* PUBLIC PASSENGER APP VIEW */}
         {(panelMode === 'passenger' || panelMode === 'dual') && (
-          <div className="phone-frame" style={{ flex: 1, margin: 0 }}>
+          <div className="phone-frame">
             {/* Header matching exact photo specifications */}
             <Header
               searchQuery={searchQuery}
@@ -297,6 +302,7 @@ export default function App() {
 
               {activeTab === 'map' && (
                 <MapView
+                  buses={buses}
                   selectedBus={selectedBus}
                   setSelectedBus={setSelectedBus}
                   onShareBus={handleShareBus}

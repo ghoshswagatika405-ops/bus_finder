@@ -103,22 +103,24 @@ function ChangeView({ center }) {
 export default function MapView({
   selectedBus,
   setSelectedBus,
+  buses: propBuses,
   onShareBus,
   userLocation = { lat: 20.2785, lng: 85.7892, name: 'Baramunda BSABT', isLiveGps: false },
   setUserLocation,
   radiusFilter = 'ALL',
   setRadiusFilter
 }) {
-  const [buses, setBuses] = useState(BUSES_LIST);
+  const busesToUse = propBuses && propBuses.length > 0 ? propBuses : BUSES_LIST;
   const [isDrawerExpanded, setIsDrawerExpanded] = useState(true);
   const [mapStyle, setMapStyle] = useState('google_roadmap'); // 'google_roadmap', 'google_satellite', 'osm'
 
   // Filter ONLY buses whose driver location is turned ON
-  const activeBusesOnMap = buses.filter((b) => b.isLocationActive === true);
+  const activeBusesOnMap = busesToUse.filter((b) => b.isLocationActive === true);
 
-  const activeBus = selectedBus && selectedBus.isLocationActive
-    ? selectedBus
-    : (activeBusesOnMap.length > 0 ? activeBusesOnMap[0] : null);
+  // Active bus to display on map & timeline track drawer
+  const activeBus = (selectedBus && busesToUse.find((b) => b.id === selectedBus.id || b.busId === selectedBus.id))
+    || selectedBus
+    || (activeBusesOnMap.length > 0 ? activeBusesOnMap[0] : busesToUse[0]);
 
   const mapCenter = activeBus ? [activeBus.lat, activeBus.lng] : [userLocation.lat, userLocation.lng];
 
@@ -128,7 +130,7 @@ export default function MapView({
   // Selected Radius object info
   const selectedRadiusObj = RADIUS_OPTIONS.find((r) => r.id === radiusFilter) || RADIUS_OPTIONS[0];
 
-  // Find nearest stop index for active bus to position green bus icon on line timeline
+  // Find nearest stop index for active bus to position bus icon on line timeline
   const getNearestStopIndex = () => {
     if (!activeBus) return 0;
     let minDistance = Infinity;
@@ -521,10 +523,14 @@ export default function MapView({
                   {activeCrowd.badgeText} ({activeCrowd.waitDecision})
                 </span>
 
-                {/* LIVE TRIP START TIME BADGE */}
-                {activeBus.tripStartTime && (
+                {/* LIVE DRIVER LOCATION STATUS BADGE */}
+                {activeBus.isLocationActive ? (
                   <span style={{ background: '#ECFDF5', border: '1px solid #6EE7B7', color: '#047857', fontSize: '0.74rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Clock size={12} /> Live Departure: {activeBus.tripStartTime}
+                    <Clock size={12} /> Live Departure: {activeBus.tripStartTime || 'Started'}
+                  </span>
+                ) : (
+                  <span style={{ background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E', fontSize: '0.74rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    🔴 Driver Location OFF
                   </span>
                 )}
               </div>
@@ -558,6 +564,7 @@ export default function MapView({
               {activeStops.map((stop, idx) => {
                 const isBusHere = currentBusStopIdx === idx;
                 const isPassed = idx < currentBusStopIdx;
+                const isLiveOn = activeBus.isLocationActive === true;
 
                 return (
                   <div
@@ -571,12 +578,16 @@ export default function MapView({
                       zIndex: 2
                     }}
                   >
-                    {/* Timeline Circle or Green Live Bus Icon */}
+                    {/* Timeline Circle or Live / Offline Bus Icon */}
                     <div style={{ width: '25px', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
                       {isBusHere ? (
                         <div
                           style={{
-                            background: activeBus.direction === 'REVERSE' ? '#7C3AED' : '#10B981',
+                            background: !isLiveOn
+                              ? '#64748B'
+                              : activeBus.direction === 'REVERSE'
+                              ? '#7C3AED'
+                              : '#10B981',
                             color: 'white',
                             width: '28px',
                             height: '28px',
@@ -584,7 +595,9 @@ export default function MapView({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            boxShadow: '0 0 0 4px rgba(16, 185, 129, 0.25)',
+                            boxShadow: isLiveOn
+                              ? '0 0 0 4px rgba(16, 185, 129, 0.3)'
+                              : '0 0 0 4px rgba(100, 116, 139, 0.2)',
                             transform: 'translateX(-1.5px)'
                           }}
                         >
@@ -596,8 +609,22 @@ export default function MapView({
                             width: '14px',
                             height: '14px',
                             borderRadius: '50%',
-                            background: isPassed ? (activeBus.direction === 'REVERSE' ? '#7C3AED' : '#10B981') : '#FFFFFF',
-                            border: `3px solid ${isPassed ? (activeBus.direction === 'REVERSE' ? '#7C3AED' : '#10B981') : '#94A3B8'}`,
+                            background: isPassed
+                              ? !isLiveOn
+                                ? '#94A3B8'
+                                : activeBus.direction === 'REVERSE'
+                                ? '#7C3AED'
+                                : '#10B981'
+                              : '#FFFFFF',
+                            border: `3px solid ${
+                              isPassed
+                                ? !isLiveOn
+                                  ? '#94A3B8'
+                                  : activeBus.direction === 'REVERSE'
+                                  ? '#7C3AED'
+                                  : '#10B981'
+                                : '#94A3B8'
+                            }`,
                             boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                           }}
                         ></div>
@@ -610,14 +637,28 @@ export default function MapView({
                         style={{
                           fontSize: '0.95rem',
                           fontWeight: isBusHere ? 800 : 600,
-                          color: isBusHere ? (activeBus.direction === 'REVERSE' ? '#7C3AED' : '#10B981') : isPassed ? '#334155' : '#1E293B'
+                          color: isBusHere
+                            ? !isLiveOn
+                              ? '#475569'
+                              : activeBus.direction === 'REVERSE'
+                              ? '#7C3AED'
+                              : '#10B981'
+                            : isPassed
+                            ? '#334155'
+                            : '#1E293B'
                         }}
                       >
                         {stop.name}
                         {isBusHere && (
-                          <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#166534', fontWeight: 800, padding: '2px 8px', borderRadius: 10, marginLeft: 8 }}>
-                            ● BUS CURRENT LIVE LOCATION
-                          </span>
+                          isLiveOn ? (
+                            <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#166534', fontWeight: 800, padding: '2px 8px', borderRadius: 10, marginLeft: 8 }}>
+                              ● BUS CURRENT LIVE LOCATION
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.72rem', background: '#FEF3C7', color: '#92400E', fontWeight: 800, padding: '2px 8px', borderRadius: 10, marginLeft: 8 }}>
+                              ⚪ LOCATION OFF (Stationary)
+                            </span>
+                          )
                         )}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 500, marginTop: 2 }}>
